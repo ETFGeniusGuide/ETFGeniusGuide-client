@@ -1,23 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React from 'react';
+import RouteLink from './routes/Route';;
 
 function App() {
-  const [data, setData] = useState([]);
-
-  useEffect(() => {
-    const fetchData = async() => {
-      const res = await axios.get('http://localhost:8080/member');
-      return res;
-    }
-
-    fetchData().then(res => setData(res));
-  }, []);
-
-  return (
-      <div>
-        {data.data}
-      </div>
-  )
+    return (
+        <div className="App">
+            {/*<GlobalFonts />*/}
+            {/*<GlobalStyles />*/}
+            <header className="App-header">
+                <RouteLink />
+            </header>
+        </div>
+    );
 }
 
 export default App;
