@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import axios from "axios";
 import ROIGraph from "../ROIGraph";
+import { API_BASE_URL} from "../../config/urlConfig"
+
 
 const InvestRatePage = () => {
     const [formData, setFormData] = useState({
@@ -35,7 +37,7 @@ const InvestRatePage = () => {
         }
 
         try {
-            const response = await axios.post("http://localhost:8080/stock/calc", formData, {
+            const response = await axios.post(`${API_BASE_URL}/stock/calc`, formData, {
                 headers: {
                     Authorization: `Bearer ${accessToken}`, // JWT 토큰 추가
                     "Content-Type": "application/json",

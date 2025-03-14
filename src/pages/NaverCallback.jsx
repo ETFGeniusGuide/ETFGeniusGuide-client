@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL} from "../config/urlConfig"
 
 const NaverCallback = () => {
     const navigate = useNavigate();
@@ -12,7 +13,7 @@ const NaverCallback = () => {
 
         if (code && state) {
             axios
-                .get(`http://localhost:8080/member/naverlogin?code=${code}&state=${state}`)
+                .get(`${API_BASE_URL}/member/naverlogin?code=${code}&state=${state}`)
                 .then((response) => {
                     const { accessToken, refreshToken } = response.data;
 

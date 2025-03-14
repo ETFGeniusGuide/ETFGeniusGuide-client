@@ -1,9 +1,10 @@
 import React from "react";
 import naverLoginImg from "../../assets/imgs/btnG_naverlogin.png";
+import {HOME_BASE_URL } from "../../config/urlConfig"
 
 const LoginPage = () => {
     const clientId = "EfRiZeozlA__LT3jUCi2"; // 네이버 클라이언트 ID
-    const redirectUri = "http://localhost:3000/naver-callback"; // 프론트 콜백 URI
+    const redirectUri = `${HOME_BASE_URL}/naver-callback`; // 프론트 콜백 URI
     const state = "randomStateValue"; // CSRF 방지용
 
     const handleNaverLogin = () => {
