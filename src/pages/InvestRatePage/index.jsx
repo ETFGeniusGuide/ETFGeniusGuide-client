@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import ROIGraph from "../ROIGraph";
 
 const InvestRatePage = () => {
     const [formData, setFormData] = useState({
@@ -58,54 +59,48 @@ const InvestRatePage = () => {
             {/* 입력 폼 */}
             <form onSubmit={handleSubmit}>
                 <label>
-                    시작 날짜: <input type="date" name="startDate" value={formData.startDate} onChange={handleChange} required />
+                    시작 날짜: <input type="date" name="startDate" value={formData.startDate} onChange={handleChange}
+                                  required/>
                 </label>
-                <br />
+                <br/>
                 <label>
-                    종료 날짜: <input type="date" name="endDate" value={formData.endDate} onChange={handleChange} required />
+                    종료 날짜: <input type="date" name="endDate" value={formData.endDate} onChange={handleChange} required/>
                 </label>
-                <br />
+                <br/>
                 <label>
-                    나스닥100 지수: <input type="number" name="ndxRate" value={formData.ndxRate} onChange={handleChange} required />
+                    나스닥100 지수: <input type="number" name="ndxRate" value={formData.ndxRate} onChange={handleChange}
+                                      required/>
                 </label>
-                <br />
+                <br/>
                 <label>
-                    S&P500 지수: <input type="number" name="spxRate" value={formData.spxRate} onChange={handleChange} required />
+                    S&P500 지수: <input type="number" name="spxRate" value={formData.spxRate} onChange={handleChange}
+                                      required/>
                 </label>
-                <br />
+                <br/>
                 <label>
-                    미국배당다우존스 지수: <input type="number" name="djiRate" value={formData.djiRate} onChange={handleChange} required />
+                    미국배당다우존스 지수: <input type="number" name="djiRate" value={formData.djiRate} onChange={handleChange}
+                                        required/>
                 </label>
-                <br />
+                <br/>
                 <button type="submit" disabled={loading}>
                     {loading ? "계산 중..." : "수익률 계산"}
                 </button>
             </form>
 
             {/* 에러 메시지 */}
-            {error && <p style={{ color: "red" }}>{error}</p>}
+            {error && <p style={{color: "red"}}>{error}</p>}
 
             {/* 결과 테이블 */}
             {rates.length > 0 && (
-                <table border="1">
-                    <thead>
-                    <tr>
-                        <th>날짜</th>
-                        <th>수익률 (%)</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {rates.map((rate, index) => (
-                        <tr key={index}>
-                            <td>{rate.date}</td>
-                            <td>{rate.roi.toFixed(2)}</td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
-            )}
-        </div>
-    );
+                <div>
+                    <h2>수익률 그래프</h2>
+                    <ROIGraph rates={rates}/>
+                </div>
+    )
+}
+</div>
+)
+    ;
 };
 
 export default InvestRatePage;
