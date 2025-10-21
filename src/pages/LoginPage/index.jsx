@@ -4,7 +4,7 @@ import {HOME_BASE_URL } from "../../config/urlConfig"
 
 const LoginPage = () => {
     const clientId = "EfRiZeozlA__LT3jUCi2"; // 네이버 클라이언트 ID
-    const redirectUri = `http://localhost:3001/naver-callback`; // 프론트 콜백 URI
+    const redirectUri = `http://localhost:9312/naver-callback`; // 프론트 콜백 URI
     const state = "randomStateValue"; // CSRF 방지용
 
     const handleNaverLogin = () => {

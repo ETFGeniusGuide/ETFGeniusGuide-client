@@ -1,94 +1,85 @@
-import React, { useEffect, useMemo, useState } from "react";
+// src/pages/BudgetPage.jsx
+import React, { useMemo, useState } from "react";
 import dayjs from "dayjs";
 import axios from "axios";
-import { useQuery, useMutation, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {create} from "zustand";
+import {
+    QueryClient,
+    QueryClientProvider,
+    useMutation,
+    useQuery,
+    useQueryClient,
+} from "@tanstack/react-query";
+import { create } from "zustand";
 
-/* =========================================================
-   0) QueryClient (이 파일만으로도 동작하도록 내부에서 생성)
-   ========================================================= */
-const queryClient = new QueryClient();
+/* ============ 환경설정 ============ */
+const BASE_URL = "http://localhost:8080";
 
-/* =========================================================
-   1) Axios 설정
-   ========================================================= */
+/* ============ Axios ============ */
 const api = axios.create({
-    baseURL: "http://localhost:8080",
+    baseURL: BASE_URL,
     headers: { "Content-Type": "application/json" },
 });
 
-/* =========================================================
-   2) Zustand Store – 선택 월/일, 로컬 스펜드 캐시
-   ========================================================= */
+/* ============ Zustand ============ */
 const useBudgetStore = create((set, get) => ({
     yearMonth: dayjs().format("YYYY-MM"),
     selectedDate: dayjs().format("YYYY-MM-DD"),
-    // 사용자가 현재 세션에서 추가한 스펜드(서버 list 엔드포인트 없을 때 사용)
-    localSpends: [], // { id, yearMonth, date, categoryId, amount, memo }
+    localSpends: [],
     setYearMonth: (ym) =>
         set({
             yearMonth: ym,
             selectedDate: dayjs(ym + "-01").format("YYYY-MM-DD"),
-            localSpends: [], // 월 바뀌면 로컬 캐시 초기화
+            localSpends: [],
         }),
     setSelectedDate: (d) => set({ selectedDate: d }),
     pushLocalSpend: (sp) => set({ localSpends: [...get().localSpends, sp] }),
+    replaceLocalSpendId: (tempId, realId) =>
+        set({
+            localSpends: get().localSpends.map((s) => (s.id === tempId ? { ...s, id: realId } : s)),
+        }),
     removeLocalSpend: (id) =>
         set({ localSpends: get().localSpends.filter((s) => s.id !== id) }),
 }));
 
-/* =========================================================
-   3) API 래퍼 (Swagger 그대로)
-   ========================================================= */
+/* ============ API 래퍼 ============ */
 // Plan
-const postPlanGet = async (yearMonth) => {
-    const { data } = await api.post("/api/budget/plans/get", { yearMonth });
-    return data; // { planId, yearMonth, amount, createdAt }
-};
-const postPlanCreate = async ({ yearMonth, amount }) => {
-    const { data } = await api.post("/api/budget/plans/create", { yearMonth, amount });
-    return data;
-};
-// (옵션) update가 필요하면 여기에 추가
-// const patchPlanUpdate = async (payload) => api.patch("/api/budget/plans/update", payload);
+const apiPlanGet = async (yearMonth) => (await api.post("/api/budget/plans/get", { yearMonth })).data;
+const apiPlanCreate = async ({ yearMonth, amount }) =>
+    (await api.post("/api/budget/plans/create", { yearMonth, amount })).data;
+const apiPlanUpdate = async ({ yearMonth, amount }) =>
+    (await api.patch("/api/budget/plans/update", { yearMonth, amount })).data;
 
 // Category
-const postCategoryList = async (includeInactive = false) => {
-    const { data } = await api.post("/api/budget/categories/list", { includeInactive });
-    return data; // [{id, name, active, custom}, ...]
-};
+const apiCategoryList = async (includeInactive = false) =>
+    (await api.post("/api/budget/categories/list", { includeInactive })).data;
+const apiCategoryCreate = async ({ name }) =>
+    (await api.post("/api/budget/categories/create", { name })).data;
 
-// Spends
-const postSpendAdd = async (payload) => {
-    const { data } = await api.post("/api/budget/spends/add", payload);
-    return data; // { id, yearMonth, date, categoryId, amount, memo }
+// Spend
+const apiSpendCreate = async (payload) => {
+    try {
+        return (await api.post("/api/budget/spends/add", payload)).data;
+    } catch (e) {
+        throw e;
+    }
 };
-const postSpendDelete = async ({ id }) => {
-    const { data } = await api.post("/api/budget/spends/delete", { id });
-    return data;
-};
-const patchSpendUpdate = async (payload) => {
-    const { data } = await api.patch("/api/budget/spends/update", payload);
-    return data;
-};
+const apiSpendDelete = async ({ id }) =>
+    (await api.post("/api/budget/spends/delete", { id })).data;
+const apiSpendUpdate = async (payload) =>
+    (await api.patch("/api/budget/spends/update", payload)).data;
 
-// (SEARCH_TODO) 서버 목록 API가 준비되면 여기 추가해서 실제 스펜드 불러오기
-// const postSpendList = async ({ yearMonth }) => {
-//   const { data } = await api.post("/api/budget/spends/list", { yearMonth });
-//   return data; // [{ id, yearMonth, date, categoryId, amount, memo }, ...]
-// };
+// ✅ 새로 추가된 조회 API
+const apiSpendListByDate = async ({ yearMonth, date }) =>
+    (await api.post("/api/budget/spends/listByDate", { yearMonth, date })).data;
 
-/* =========================================================
-   4) 유틸 – 월 일자 생성, 금액 포맷, 롤링 한도 계산
-   ========================================================= */
-const formatKRW = (n) =>
-    (n ?? 0).toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+/* ============ 유틸 ============ */
+const fmtKRW = (n) => (n ?? 0).toLocaleString("ko-KR", { maximumFractionDigits: 0 });
 
-const buildMonthDays = (yearMonth) => {
+const monthDays = (yearMonth) => {
     const start = dayjs(yearMonth + "-01");
-    const days = start.daysInMonth();
+    const len = start.daysInMonth();
     const out = [];
-    for (let d = 1; d <= days; d++) {
+    for (let d = 1; d <= len; d++) {
         const date = start.date(d);
         out.push({
             dateStr: date.format("YYYY-MM-DD"),
@@ -98,61 +89,53 @@ const buildMonthDays = (yearMonth) => {
     return out;
 };
 
-/** 엑셀과 동일한 로직
- * base = floor(plan.amount / monthDays)
- * allowedToday = base + carryFromPrev
- * endOfDayCarry = allowedToday - spendToday
- * 다음 날 carry = endOfDayCarry
- */
-const buildAllowanceTable = ({ yearMonth, planAmount, spendsByDate }) => {
-    const days = buildMonthDays(yearMonth);
-    const base = Math.floor((planAmount ?? 0) / days.length);
+const buildAllowance = ({ yearMonth, planAmount, spendsByDate }) => {
+    const days = monthDays(yearMonth);
+    const base = Math.floor((planAmount ?? 0) / (days.length || 1));
     let carry = 0;
     return days.map((d) => {
-        const daySpend = spendsByDate[d.dateStr] ?? 0;
+        const spend = spendsByDate[d.dateStr] ?? 0;
         const allowedToday = base + carry;
-        const endCarry = allowedToday - daySpend;
+        const endCarry = allowedToday - spend;
         carry = endCarry;
-        return {
-            ...d,
-            base,
-            allowedToday,
-            spend: daySpend,
-            endCarry,
-        };
+        return { ...d, base, allowedToday, spend, endCarry };
     });
 };
 
-/* =========================================================
-   5) 모달 컴포넌트 (아주 심플한 CSS)
-   ========================================================= */
-const Modal = ({ open, onClose, children, title }) => {
-    if (!open) return null;
-    return (
+/* ============ 간단 모달 ============ */
+const Modal = ({ open, onClose, children, title }) =>
+    !open ? null : (
         <div style={S.backdrop}>
             <div style={S.modal}>
                 <div style={S.modalHeader}>
                     <strong>{title}</strong>
-                    <button onClick={onClose} style={S.btnGhost}>×</button>
+                    <button onClick={onClose} style={S.btnGhost}>
+                        ×
+                    </button>
                 </div>
                 <div style={{ padding: 12 }}>{children}</div>
             </div>
         </div>
     );
-};
 
-/* =========================================================
-   6) 본문 페이지
-   ========================================================= */
+/* ============ 페이지 ============ */
 function BudgetPageInner() {
-    const { yearMonth, selectedDate, setYearMonth, setSelectedDate, localSpends, pushLocalSpend, removeLocalSpend } =
-        useBudgetStore();
+    const queryClient = useQueryClient();
+    const {
+        yearMonth,
+        selectedDate,
+        setYearMonth,
+        setSelectedDate,
+        localSpends,
+        pushLocalSpend,
+        replaceLocalSpendId,
+        removeLocalSpend,
+    } = useBudgetStore();
 
-    // UI 상태
     const [planModalOpen, setPlanModalOpen] = useState(false);
     const [spendModalOpen, setSpendModalOpen] = useState(false);
+    const [errorMsg, setErrorMsg] = useState("");
 
-    // 입력 상태
     const [planAmountInput, setPlanAmountInput] = useState("");
     const [spendInput, setSpendInput] = useState({
         date: selectedDate,
@@ -161,137 +144,195 @@ function BudgetPageInner() {
         memo: "",
     });
 
-    // 6-1) 쿼리: 카테고리/플랜
+    const [useCustomCategory, setUseCustomCategory] = useState(false);
+    const [customCategoryName, setCustomCategoryName] = useState("");
+    const [categoryCreating, setCategoryCreating] = useState(false);
+
+    // 카테고리/플랜
     const catQuery = useQuery({
         queryKey: ["categories"],
-        queryFn: () => postCategoryList(false),
+        queryFn: () => apiCategoryList(false),
     });
 
     const planQuery = useQuery({
         queryKey: ["plan", yearMonth],
-        queryFn: () => postPlanGet(yearMonth),
+        queryFn: () => apiPlanGet(yearMonth),
         retry: false,
     });
 
-    // (SEARCH_TODO) 서버 스펜드 목록 – 준비되면 활성화
-    // const spendListQuery = useQuery({
-    //   queryKey: ["spends", yearMonth],
-    //   queryFn: () => postSpendList({ yearMonth }),
-    // });
+    // ✅ “그 날 지출 목록” (모달용)
+    const dateSpendQuery = useQuery({
+        queryKey: ["spendByDate", yearMonth, spendInput.date],
+        queryFn: () => apiSpendListByDate({ yearMonth, date: spendInput.date }),
+        enabled: spendModalOpen && !!spendInput.date, // 모달 열렸을 때만 불러옴
+    });
 
-    // 6-2) 변이: 플랜 생성, 스펜드 추가/수정/삭제
-    const createPlanMutation = useMutation({
-        mutationFn: postPlanCreate,
+    // 플랜 업서트
+    const savePlan = useMutation({
+        mutationFn: async ({ yearMonth, amount }) => {
+            try {
+                return await apiPlanCreate({ yearMonth, amount });
+            } catch (e) {
+                const msg = e?.response?.data?.message || e?.message || "";
+                if (msg.includes("이미") && msg.includes("존재")) {
+                    return await apiPlanUpdate({ yearMonth, amount });
+                }
+                if (e?.response?.status === 409) {
+                    return await apiPlanUpdate({ yearMonth, amount });
+                }
+                throw e;
+            }
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["plan", yearMonth] });
             setPlanModalOpen(false);
+            setErrorMsg("");
+        },
+        onError: (e) => {
+            setErrorMsg(e?.response?.data?.message || e?.message || "월 목표액 저장에 실패했습니다.");
         },
     });
 
-    const addSpendMutation = useMutation({
-        mutationFn: postSpendAdd,
-        onSuccess: (data) => {
-            // 서버가 부여한 id로 로컬 캐시에 반영
-            pushLocalSpend(data);
+    // 지출 추가/삭제/수정
+    const addSpend = useMutation({
+        mutationFn: apiSpendCreate,
+        onMutate: async (payload) => {
+            setErrorMsg("");
+            const tempId = "tmp-" + Date.now();
+            pushLocalSpend({ id: tempId, ...payload });
+            return { tempId };
+        },
+        onSuccess: (data, _vars, ctx) => {
+            if (data?.id && ctx?.tempId) replaceLocalSpendId(ctx.tempId, data.id);
+            // ✅ 추가 후 “그 날 지출 목록” 갱신
+            queryClient.invalidateQueries({ queryKey: ["spendByDate", yearMonth, _vars.date] });
             setSpendModalOpen(false);
         },
-    });
-
-    const deleteSpendMutation = useMutation({
-        mutationFn: postSpendDelete,
-        onSuccess: (_, vars) => {
-            removeLocalSpend(vars.id);
+        onError: (e, vars, ctx) => {
+            if (ctx?.tempId) removeLocalSpend(ctx.tempId);
+            setErrorMsg(e?.response?.data?.message || e?.message || "지출 저장에 실패했습니다.");
+            // 실패 시에도 목록 새로고침 시도(서버 기준으로 보정)
+            queryClient.invalidateQueries({ queryKey: ["spendByDate", yearMonth, vars?.date] });
         },
     });
 
-    // 6-3) 월 일자 / 스펜드 합계 by date
-    const monthDays = useMemo(() => buildMonthDays(yearMonth), [yearMonth]);
+    const deleteSpend = useMutation({
+        mutationFn: apiSpendDelete,
+        onSuccess: (_data, vars) => {
+            removeLocalSpend(vars.id); // 낙관 제거
+            queryClient.invalidateQueries({ queryKey: ["spendByDate", yearMonth, spendInput.date] });
+        },
+    });
 
+    const updateSpend = useMutation({
+        mutationFn: apiSpendUpdate,
+        onSuccess: (_d, v) => {
+            queryClient.invalidateQueries({ queryKey: ["spendByDate", yearMonth, v.date] });
+        },
+        onError: (e) => {
+            setErrorMsg(e?.response?.data?.message || e?.message || "지출 수정에 실패했습니다.");
+        },
+    });
+
+    // 월 집계(화면 상단 표 계산용) — 서버 목록 API가 생겨도 합계만 쓰면 충분
     const spendsByDate = useMemo(() => {
-        // 서버 목록 API가 있으면 spendListQuery.data를 합산
-        const fromLocal = localSpends.filter((s) => s.yearMonth === yearMonth);
         const map = {};
-        for (const s of fromLocal) {
+        for (const s of localSpends.filter((x) => x.yearMonth === yearMonth)) {
             map[s.date] = (map[s.date] ?? 0) + Math.round(Number(s.amount) || 0);
         }
-        // (SEARCH_TODO) 서버 목록 합치기
-        // if (spendListQuery.data) {
-        //   for (const s of spendListQuery.data) {
-        //     map[s.date] = (map[s.date] ?? 0) + (s.amount ?? 0);
-        //   }
-        // }
         return map;
-    }, [localSpends, yearMonth /*, spendListQuery.data*/]);
+    }, [localSpends, yearMonth]);
 
-    const planAmount = planQuery.data?.amount ?? null;
-    const table = useMemo(
-        () =>
-            buildAllowanceTable({
-                yearMonth,
-                planAmount: planAmount || 0,
-                spendsByDate,
-            }),
+    const planAmount = planQuery.data?.amount ?? 0;
+    const rows = useMemo(
+        () => buildAllowance({ yearMonth, planAmount, spendsByDate }),
         [yearMonth, planAmount, spendsByDate]
     );
 
-    // 6-4) 헬퍼
-    const onChangeMonth = (offset) => {
-        const next = dayjs(yearMonth + "-01").add(offset, "month").format("YYYY-MM");
-        setYearMonth(next);
+    const onChangeMonth = (offset) =>
+        setYearMonth(dayjs(yearMonth + "-01").add(offset, "month").format("YYYY-MM"));
+    const selectedRow = rows.find((r) => r.dateStr === selectedDate);
+    const monthLen = rows.length;
+
+    const openSpendModalForDate = (dateStr) => {
+        setSpendInput({
+            date: dateStr,
+            categoryId: "",
+            amount: "",
+            memo: "",
+        });
+        setUseCustomCategory(false);
+        setCustomCategoryName("");
+        setSpendModalOpen(true);
     };
 
-    const selectedRow = table.find((r) => r.dateStr === selectedDate);
+    const handleAddCategory = async () => {
+        if (!customCategoryName.trim()) return;
+        try {
+            setCategoryCreating(true);
+            const created = await apiCategoryCreate({ name: customCategoryName.trim() });
+            await queryClient.invalidateQueries({ queryKey: ["categories"] });
+            const newId = created?.id ?? created?.data?.id;
+            setSpendInput((s) => ({ ...s, categoryId: newId ? String(newId) : "" }));
+            setCustomCategoryName("");
+            setUseCustomCategory(false);
+        } catch (e) {
+            setErrorMsg(e?.response?.data?.message || e?.message || "카테고리 추가에 실패했습니다.");
+        } finally {
+            setCategoryCreating(false);
+        }
+    };
 
-    // 6-5) 화면
     return (
         <div style={S.wrap}>
+            {/* 헤더 */}
             <header style={S.header}>
                 <div>
                     <button onClick={() => onChangeMonth(-1)} style={S.btn}>◀</button>
-                    <strong style={{ margin: "0 8px" }}>{yearMonth}</strong>
-                    <button onClick={() => onChangeMonth(1)} style={S.btn}>▶</button>
                 </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {planAmount ? (
-                        <>
-                            <span>월 목표액:</span>
-                            <span style={S.badge}>{formatKRW(planAmount)}원</span>
-                            <span style={{ color: "#888" }}>
-                / 일기준 {formatKRW(Math.floor(planAmount / monthDays.length))}원
-              </span>
-                            <button style={S.btnOutline} onClick={() => {
-                                setPlanAmountInput(planAmount);
-                                setPlanModalOpen(true);
-                            }}>
-                                변경
-                            </button>
-                        </>
-                    ) : (
-                        <button style={S.btnPrimary} onClick={() => setPlanModalOpen(true)}>
-                            월 목표액 등록
-                        </button>
-                    )}
+                <div style={{ textAlign: "center", fontWeight: 700 }}>{yearMonth}</div>
+                <div>
+                    <button onClick={() => onChangeMonth(1)} style={S.btn}>▶</button>
                 </div>
             </header>
 
+            {/* 플랜 */}
+            <section style={S.planBar}>
+                {planAmount ? (
+                    <>
+                        <span>월 목표액:</span>
+                        <span style={S.badge}>{fmtKRW(planAmount)}원</span>
+                        <span style={{ color: "#888" }}>
+              / 일기준 {fmtKRW(Math.floor(planAmount / (monthLen || 1)))}원
+            </span>
+                        <button
+                            style={S.btnOutline}
+                            onClick={() => { setPlanAmountInput(planAmount); setPlanModalOpen(true); }}
+                        >
+                            변경
+                        </button>
+                    </>
+                ) : (
+                    <button
+                        style={S.btnPrimary}
+                        onClick={() => { setPlanAmountInput(""); setPlanModalOpen(true); }}
+                    >
+                        월 목표액 등록
+                    </button>
+                )}
+            </section>
+
+            {/* 툴바 */}
             <section style={S.toolbar}>
                 <button
                     style={S.btnPrimary}
-                    onClick={() => {
-                        setSpendInput({
-                            date: selectedDate,
-                            categoryId: "",
-                            amount: "",
-                            memo: "",
-                        });
-                        setSpendModalOpen(true);
-                    }}
+                    onClick={() => openSpendModalForDate(selectedDate)}
                 >
                     + 지출 입력
                 </button>
             </section>
 
+            {/* 표 */}
             <section style={S.tableCard}>
                 <div style={S.tableHead}>
                     <div style={S.thDate}>일자</div>
@@ -302,20 +343,22 @@ function BudgetPageInner() {
                 </div>
 
                 <div>
-                    {table.map((row) => {
+                    {rows.map((row) => {
                         const isSel = row.dateStr === selectedDate;
                         return (
                             <div
                                 key={row.dateStr}
                                 style={{ ...S.tr, background: isSel ? "#f0f7ff" : "white", cursor: "pointer" }}
-                                onClick={() => useBudgetStore.getState().setSelectedDate(row.dateStr)}
+                                onClick={() => setSelectedDate(row.dateStr)}
+                                onDoubleClick={() => openSpendModalForDate(row.dateStr)}
+                                title="더블클릭하면 지출 입력/내역 창이 열립니다."
                             >
                                 <div style={S.tdDate}>{row.dateStr.slice(-2)}일</div>
                                 <div style={S.td}>{row.weekday}</div>
-                                <div style={S.tdRight}>{formatKRW(row.allowedToday)}원</div>
-                                <div style={S.tdRight}>{formatKRW(row.spend)}원</div>
+                                <div style={S.tdRight}>{fmtKRW(row.allowedToday)}원</div>
+                                <div style={S.tdRight}>{fmtKRW(row.spend)}원</div>
                                 <div style={{ ...S.tdRight, color: row.endCarry < 0 ? "#d00" : "#0a7" }}>
-                                    {formatKRW(row.endCarry)}원
+                                    {fmtKRW(row.endCarry)}원
                                 </div>
                             </div>
                         );
@@ -323,31 +366,32 @@ function BudgetPageInner() {
                 </div>
             </section>
 
-            {/* 하단 요약 */}
+            {/* 요약 */}
             <footer style={S.footer}>
                 <div>
                     <strong>{selectedDate}</strong>{" "}
                     <span style={{ color: "#888" }}>
-            (기준 한도 {formatKRW(selectedRow?.allowedToday ?? 0)}원)
+            (기준 한도 {fmtKRW(selectedRow?.allowedToday ?? 0)}원)
           </span>
                 </div>
                 <div>
                     이번 달 총지출:{" "}
                     <strong>
-                        {formatKRW(
-                            Object.values(spendsByDate).reduce((a, b) => a + (b || 0), 0)
-                        )}
-                        원
+                        {fmtKRW(Object.values(spendsByDate).reduce((a, b) => a + (b || 0), 0))}원
                     </strong>
                 </div>
             </footer>
 
+            {/* 에러 */}
+            {errorMsg && (
+                <div style={S.errorBox}>
+                    <span>{errorMsg}</span>
+                    <button style={S.btnGhost} onClick={() => setErrorMsg("")}>×</button>
+                </div>
+            )}
+
             {/* 모달 – 월 목표액 */}
-            <Modal
-                open={planModalOpen}
-                onClose={() => setPlanModalOpen(false)}
-                title="월 목표액 설정"
-            >
+            <Modal open={planModalOpen} onClose={() => setPlanModalOpen(false)} title="월 목표액 설정/변경">
                 <div style={S.formRow}>
                     <label>연-월</label>
                     <input
@@ -368,29 +412,21 @@ function BudgetPageInner() {
                     />
                 </div>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button style={S.btn} onClick={() => setPlanModalOpen(false)}>
-                        취소
-                    </button>
+                    <button style={S.btn} onClick={() => setPlanModalOpen(false)}>취소</button>
                     <button
                         style={S.btnPrimary}
-                        onClick={() =>
-                            createPlanMutation.mutate({
-                                yearMonth,
-                                amount: Math.round(Number(planAmountInput) || 0),
-                            })
-                        }
+                        onClick={() => savePlan.mutate({
+                            yearMonth,
+                            amount: Math.round(Number(planAmountInput) || 0),
+                        })}
                     >
                         저장
                     </button>
                 </div>
             </Modal>
 
-            {/* 모달 – 지출 입력 */}
-            <Modal
-                open={spendModalOpen}
-                onClose={() => setSpendModalOpen(false)}
-                title="지출 입력"
-            >
+            {/* 모달 – 지출 입력 + 그 날 내역 */}
+            <Modal open={spendModalOpen} onClose={() => setSpendModalOpen(false)} title={`지출 입력 · ${spendInput.date}`}>
                 <div style={S.formRow}>
                     <label>일자</label>
                     <input
@@ -401,25 +437,49 @@ function BudgetPageInner() {
                     />
                 </div>
 
-                <div style={S.formRow}>
-                    <label>카테고리</label>
-                    <select
-                        value={spendInput.categoryId}
-                        onChange={(e) =>
-                            setSpendInput((s) => ({ ...s, categoryId: e.target.value }))
-                        }
-                        style={S.input}
-                    >
-                        <option value="" disabled>
-                            선택하세요
-                        </option>
-                        {(catQuery.data ?? []).map((c) => (
-                            <option key={c.id} value={c.id}>
-                                {c.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                {/* 카테고리 선택/직접추가 */}
+                {!useCustomCategory ? (
+                    <>
+                        <div style={S.formRow}>
+                            <label>카테고리</label>
+                            <select
+                                value={spendInput.categoryId}
+                                onChange={(e) => setSpendInput((s) => ({ ...s, categoryId: e.target.value }))}
+                                style={S.input}
+                            >
+                                <option value="" disabled>선택하세요</option>
+                                {(catQuery.data ?? []).map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                            <button style={S.btn} onClick={() => setUseCustomCategory(true)}>+ 직접 입력으로 추가</button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div style={S.formRow}>
+                            <label>새 카테고리</label>
+                            <input
+                                placeholder="예: 커피"
+                                value={customCategoryName}
+                                onChange={(e) => setCustomCategoryName(e.target.value)}
+                                style={S.input}
+                            />
+                        </div>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 10 }}>
+                            <button style={S.btn} onClick={() => setUseCustomCategory(false)}>취소</button>
+                            <button
+                                style={S.btnPrimary}
+                                onClick={handleAddCategory}
+                                disabled={!customCategoryName.trim() || categoryCreating}
+                            >
+                                {categoryCreating ? "추가 중..." : "카테고리 추가"}
+                            </button>
+                        </div>
+                    </>
+                )}
 
                 <div style={S.formRow}>
                     <label>금액(원)</label>
@@ -442,34 +502,110 @@ function BudgetPageInner() {
                     />
                 </div>
 
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button style={S.btn} onClick={() => setSpendModalOpen(false)}>
-                        취소
-                    </button>
-                    <button
-                        style={S.btnPrimary}
-                        onClick={() =>
-                            addSpendMutation.mutate({
-                                yearMonth,
-                                date: spendInput.date,
-                                categoryId: Number(spendInput.categoryId),
-                                amount: Math.round(Number(spendInput.amount) || 0),
-                                memo: spendInput.memo || "",
-                            })
-                        }
-                        disabled={!spendInput.categoryId || !spendInput.amount}
-                    >
-                        저장
-                    </button>
+                <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "#64748b" }}>
+            저장 시 월({yearMonth}) 집계에 즉시 반영됩니다.
+          </span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                        <button style={S.btn} onClick={() => setSpendModalOpen(false)}>취소</button>
+                        <button
+                            style={S.btnPrimary}
+                            onClick={() =>
+                                addSpend.mutate({
+                                    yearMonth,
+                                    date: spendInput.date,
+                                    categoryId: Number(spendInput.categoryId) || undefined,
+                                    amount: Math.round(Number(spendInput.amount) || 0),
+                                    memo: spendInput.memo || "",
+                                })
+                            }
+                            disabled={
+                                (!useCustomCategory && !spendInput.categoryId) ||
+                                !(Number(spendInput.amount) > 0) ||
+                                !spendInput.date
+                            }
+                        >
+                            저장
+                        </button>
+                    </div>
+                </div>
+
+                {/* ─────────────────────────────
+            ✅ 여기부터 “그 날 지출 내역” 리스트
+            ───────────────────────────── */}
+                <div style={{ marginTop: 14, borderTop: "1px solid #eee", paddingTop: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                        <strong>{spendInput.date} 지출 내역</strong>
+                        <button
+                            style={S.btn}
+                            onClick={() =>
+                                queryClient.invalidateQueries({ queryKey: ["spendByDate", yearMonth, spendInput.date] })
+                            }
+                            title="새로고침"
+                        >
+                            새로고침
+                        </button>
+                    </div>
+
+                    {dateSpendQuery.isLoading ? (
+                        <div>불러오는 중...</div>
+                    ) : dateSpendQuery.isError ? (
+                        <div style={{ color: "#d00" }}>
+                            조회 실패: {String(dateSpendQuery.error?.response?.data?.message || dateSpendQuery.error?.message || "오류")}
+                        </div>
+                    ) : (dateSpendQuery.data?.items?.length ?? 0) === 0 ? (
+                        <div style={{ color: "#64748b" }}>지출 내역이 없습니다.</div>
+                    ) : (
+                        <div>
+                            <div style={S.dayListHead}>
+                                <div style={{ flex: "0 0 60px" }}>ID</div>
+                                <div style={{ flex: "0 0 120px" }}>카테고리</div>
+                                <div style={{ flex: "0 0 100px", textAlign: "right" }}>금액</div>
+                                <div style={{ flex: "1 1 auto" }}>메모</div>
+                                <div style={{ flex: "0 0 80px" }}></div>
+                            </div>
+                            {(dateSpendQuery.data?.items ?? []).map((it) => (
+                                <div key={it.id} style={S.dayListRow}>
+                                    <div style={{ flex: "0 0 60px" }}>{it.id}</div>
+                                    <div style={{ flex: "0 0 120px" }}>{it.categoryName ?? it.categoryId}</div>
+                                    <div style={{ flex: "0 0 100px", textAlign: "right" }}>{fmtKRW(it.amount)}원</div>
+                                    <div style={{ flex: "1 1 auto" }}>{it.memo}</div>
+                                    <div style={{ flex: "0 0 80px", display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                        <button
+                                            style={S.btn}
+                                            onClick={() => {
+                                                // 간단 수정: 현재 값으로 입력 세팅
+                                                setSpendInput({
+                                                    date: dayjs(it.date).format("YYYY-MM-DD"),
+                                                    categoryId: String(it.categoryId ?? ""),
+                                                    amount: String(it.amount ?? ""),
+                                                    memo: it.memo ?? "",
+                                                });
+                                            }}
+                                            title="위 폼으로 불러오기"
+                                        >
+                                            수정
+                                        </button>
+                                        <button
+                                            style={S.btnOutline}
+                                            onClick={() => deleteSpend.mutate({ id: it.id })}
+                                            title="삭제"
+                                        >
+                                            삭제
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </Modal>
         </div>
     );
 }
 
-/* =========================================================
-   7) Export – QueryClientProvider로 감싸서 내보냄
-   ========================================================= */
+/* ============ Provider ============ */
+const queryClient = new QueryClient();
 export default function BudgetPage() {
     return (
         <QueryClientProvider client={queryClient}>
@@ -478,17 +614,22 @@ export default function BudgetPage() {
     );
 }
 
-/* =========================================================
-   8) 아주 간단한 스타일
-   ========================================================= */
+/* ============ 스타일 ============ */
 const S = {
     wrap: { maxWidth: 920, margin: "0 auto", padding: 16 },
     header: {
-        display: "flex",
-        justifyContent: "space-between",
+        display: "grid",
+        gridTemplateColumns: "80px 1fr 80px",
         alignItems: "center",
-        gap: 12,
+        gap: 8,
         padding: "8px 0",
+    },
+    planBar: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 0 10px",
+        flexWrap: "wrap",
     },
     toolbar: { display: "flex", justifyContent: "flex-end", margin: "8px 0 16px" },
     tableCard: {
@@ -570,7 +711,7 @@ const S = {
         padding: 16,
         zIndex: 1000,
     },
-    modal: { width: 420, background: "white", borderRadius: 12, overflow: "hidden" },
+    modal: { width: 640, maxWidth: "96vw", background: "white", borderRadius: 12, overflow: "hidden" },
     modalHeader: {
         display: "flex",
         justifyContent: "space-between",
@@ -590,5 +731,32 @@ const S = {
         border: "1px solid #d1d5db",
         borderRadius: 8,
         width: "100%",
+    },
+    errorBox: {
+        marginTop: 12,
+        padding: "8px 12px",
+        border: "1px solid #fecaca",
+        background: "#fef2f2",
+        color: "#991b1b",
+        borderRadius: 8,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 8,
+    },
+    dayListHead: {
+        display: "flex",
+        padding: "10px 8px",
+        background: "#f8fafc",
+        border: "1px solid #e5e7eb",
+        borderRadius: 8,
+        fontWeight: 600,
+        color: "#334155",
+    },
+    dayListRow: {
+        display: "flex",
+        padding: "10px 8px",
+        borderBottom: "1px solid #f1f5f9",
+        alignItems: "center",
     },
 };
